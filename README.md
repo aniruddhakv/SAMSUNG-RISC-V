@@ -1,4 +1,4 @@
-# Welcome to My Project Repository
+# Samsung RISC-V program
 
 ## About me
 Hello! I am **Aniruddha K V**
