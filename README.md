@@ -3,7 +3,7 @@
 ## About me
 Hello! I am **Aniruddha K V**
 
-**Email:** (aniruddhkv89@gmail.com) <br>
+**Email:** aniruddhkv89@gmail.com <br>
 **LinkedIn:** [Aniruddha K V](https://www.linkedin.com/in/aniruddha-k-v-162b04285/)
 
 ## Tasks
