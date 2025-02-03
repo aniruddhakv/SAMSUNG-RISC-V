@@ -10,3 +10,7 @@ Hello! I am **Aniruddha K V**
 Task 1: Task is to install all the essential tools required for this internship such as Ubuntu on VMBox, leafpad and did a small code to find the sum from 1 to n numbers
 
 Task 2: SPIKE Simulation
+
+Task 3:RISC-V Instruction Encoding Overview
+
+Task 4:Functional Simulation of RISC-V Core
