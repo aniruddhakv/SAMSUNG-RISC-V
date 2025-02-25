@@ -1,65 +1,146 @@
-#include <ch32v00x.h>
-#include <debug.h>
+#include "debug.h"
 
-void GPIO_Config(void) {
+uint16_t distance;
+uint16_t press;
 
-    GPIO_InitTypeDef GPIO_InitStructure = {0};
+void Input_Capture_Init(uint16_t arr, uint32_t psc)
+{
+    GPIO_InitTypeDef        GPIO_InitStructure = {0};
+    TIM_ICInitTypeDef       TIM_ICInitStructure = {0};
+    TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure = {0};
+    NVIC_InitTypeDef        NVIC_InitStructure = {0};
 
-    // Enable GPIOD clock
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD, ENABLE);
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD | RCC_APB2Periph_GPIOC | RCC_APB2Periph_TIM1, ENABLE);
 
-    // Configure GPIO Pin 0 and Pin 4 (Echo pin and Trigger pin) as Input Pull-Up
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_4;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
     GPIO_Init(GPIOD, &GPIO_InitStructure);
+    GPIO_ResetBits(GPIOD, GPIO_Pin_2);
 
-    // Configure GPIO Pin 2 and Pin 3 (Trigger and Buzzer control) as Output Push-Pull
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2 | GPIO_Pin_3; 
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
+    GPIO_Init(GPIOC, &GPIO_InitStructure);
+
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3 | GPIO_Pin_4;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOD, &GPIO_InitStructure);
+
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOC, &GPIO_InitStructure);
+
+    TIM_TimeBaseInitStructure.TIM_Period = arr;
+    TIM_TimeBaseInitStructure.TIM_Prescaler = psc;
+    TIM_TimeBaseInitStructure.TIM_ClockDivision = TIM_CKD_DIV1;
+    TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up;
+    TIM_TimeBaseInitStructure.TIM_RepetitionCounter = 0x00;
+    TIM_TimeBaseInit(TIM1, &TIM_TimeBaseInitStructure);
+
+    TIM_ICInitStructure.TIM_Channel = TIM_Channel_1;
+    TIM_ICInitStructure.TIM_ICPrescaler = TIM_ICPSC_DIV1;
+    TIM_ICInitStructure.TIM_ICFilter = 0x00;
+    TIM_ICInitStructure.TIM_ICPolarity = TIM_ICPolarity_Rising;
+    TIM_ICInitStructure.TIM_ICSelection = TIM_ICSelection_DirectTI;
+
+    TIM_PWMIConfig(TIM1, &TIM_ICInitStructure);
+
+    NVIC_InitStructure.NVIC_IRQChannel = TIM1_CC_IRQn;
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
+    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+    NVIC_Init(&NVIC_InitStructure);
+
+    TIM_ITConfig(TIM1, TIM_IT_CC1 | TIM_IT_CC2, ENABLE);
+
+    TIM_SelectInputTrigger(TIM1, TIM_TS_TI1FP1);
+    TIM_SelectSlaveMode(TIM1, TIM_SlaveMode_Reset);
+    TIM_SelectMasterSlaveMode(TIM1, TIM_MasterSlaveMode_Enable);
+    TIM_Cmd(TIM1, ENABLE);
 }
 
-int main(void) {
-
-    uint8_t echo_status = 0;
-
-    // Configure the NVIC for interrupt priority
-    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
-
-    // Update system clock
-    SystemCoreClockUpdate();
-
-    // Initialize delay function
-    Delay_Init();
-
-    // Configure GPIO pins
-    GPIO_Config();
-
-    while(1) {
-
-        // Generate a trigger pulse (10 ms width)
-        GPIO_WriteBit(GPIOD, GPIO_Pin_2, SET);
-        Delay_Ms(10); // Trigger pulse width
-        GPIO_WriteBit(GPIOD, GPIO_Pin_2, RESET);
-
-        // Read the echo pin (Pin 4) for signal indicating an object
-        echo_status = GPIO_ReadInputDataBit(GPIOD, GPIO_Pin_4);
-
-        // If echo pin reads high, object detected near the sensor
-        if (echo_status == 1) {
-
-            // Activate the buzzer (Pin 3) when someone is near
-            GPIO_WriteBit(GPIOD, GPIO_Pin_3, SET);  // Turn on buzzer
-
-            // Keep the buzzer on for 2 seconds
-            Delay_Ms(2000); 
-
-            // Deactivate the buzzer
-            GPIO_WriteBit(GPIOD, GPIO_Pin_3, RESET);  
-
-            // Wait for 2 seconds before checking again
-            Delay_Ms(2000); 
-        }
+uint16_t pressed(void){
+    if(GPIO_ReadInputDataBit(GPIOC,GPIO_Pin_3)==1){
+        Delay_Ms(500);
+        GPIO_WriteBit(GPIOC,GPIO_Pin_7,SET);
+        Delay_Ms(100);
+        GPIO_WriteBit(GPIOC,GPIO_Pin_7,RESET);
+        Delay_Ms(1000);
+        press=!press;
     }
+    return press;
+}
+
+int main(void)
+{
+    SystemCoreClockUpdate();
+    Delay_Init();
+    USART_Printf_Init(115200);
+    Input_Capture_Init(0xFFFF, 48 - 1);
+    uint32_t count=0;
+    uint32_t value=0;
+    uint16_t avg=0;
+    
+    while (pressed())
+    {     
+        GPIO_WriteBit(GPIOD, GPIO_Pin_3, SET);
+        Delay_Us(10); 
+        GPIO_WriteBit(GPIOD, GPIO_Pin_3, RESET);
+        if(count<=4000){
+            count+=1;
+            GPIO_WriteBit(GPIOD,GPIO_Pin_4,SET);
+            value+=distance;
+            Delay_Ms(1);
+        }else if(count==4001){
+            avg = value/count;
+            GPIO_WriteBit(GPIOC,GPIO_Pin_7,SET);
+            Delay_Ms(100);
+            GPIO_WriteBit(GPIOC,GPIO_Pin_7,RESET);
+            Delay_Ms(100);
+            GPIO_WriteBit(GPIOC,GPIO_Pin_7,SET);
+            Delay_Ms(100);
+            GPIO_WriteBit(GPIOC,GPIO_Pin_7,RESET);
+            Delay_Ms(100);
+            count+=1;
+        }else if(count>4001 && count<4050){
+            count+=1;
+            Delay_Ms(1);
+        }else{
+            GPIO_WriteBit(GPIOD,GPIO_Pin_4,RESET);
+            if(distance<avg-10 || distance>avg+10){
+                count=0;
+                while(pressed()){
+                    GPIO_WriteBit(GPIOC,GPIO_Pin_7,SET);
+                    GPIO_WriteBit(GPIOD,GPIO_Pin_4,SET);
+                    Delay_Ms(500);
+                    GPIO_WriteBit(GPIOC,GPIO_Pin_7,RESET);
+                    GPIO_WriteBit(GPIOD,GPIO_Pin_4,RESET);
+                    Delay_Ms(500);
+                }
+            }
+        }  
+    }
+}
+
+
+
+void TIM1_CC_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+
+void TIM1_CC_IRQHandler(void)
+{
+    if (TIM_GetITStatus(TIM1, TIM_IT_CC1) != RESET)
+    {
+        TIM_SetCounter(TIM1,0);
+    }
+
+    if (TIM_GetITStatus(TIM1, TIM_IT_CC2) != RESET)
+    {
+        uint32_t duration = TIM_GetCapture1(TIM1);
+        distance = duration*0.034/2;
+        printf("%d\n",distance);
+        
+    }
+
+    TIM_ClearITPendingBit(TIM1, TIM_IT_CC1 | TIM_IT_CC2);
 }
